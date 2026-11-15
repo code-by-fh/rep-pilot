@@ -1,7 +1,7 @@
-# Run after gh auth login. Creates a private repo when origin is absent,
+# Run after gh auth login. Creates a public repo when origin is absent,
 # pushes the current branch, waits for that commit's build, and downloads the IPA.
 param(
-    [string]$Repository = 'sidestart'
+    [string]$Repository = 'code-by-fh/rep-pilot'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,7 +29,7 @@ try {
     if (-not (Test-Path -LiteralPath '.git')) {
         Invoke-Checked git @('init', '-b', 'main')
         Invoke-Checked git @('add', '.')
-        Invoke-Checked git @('commit', '-m', 'Initial SideStart Flutter app and sideload builds')
+        Invoke-Checked git @('commit', '-m', 'Initial Rep Pilot workout journal and sideload builds')
     }
     $pendingChanges = & git status --porcelain
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read git status.' }
@@ -43,8 +43,20 @@ try {
     $commit = (& git rev-parse HEAD).Trim()
     $remoteNames = @(& git remote)
     if ($remoteNames -notcontains 'origin') {
-        Invoke-Checked gh @('repo', 'create', $Repository, '--private', '--source', '.', '--remote', 'origin', '--push')
+        Invoke-Checked gh @('repo', 'create', $Repository, '--public', '--source', '.', '--remote', 'origin', '--push')
     } else {
+        $pushUrls = @(& git remote get-url --push --all origin)
+        if ($LASTEXITCODE -ne 0 -or $pushUrls.Count -eq 0) { throw 'Cannot read origin push destination.' }
+        foreach ($pushUrl in $pushUrls) {
+            $destination = $pushUrl.Trim() -replace '^https://github\.com/', '' -replace '^git@github\.com:', '' -replace '^ssh://git@github\.com/', ''
+            $destination = $destination.TrimEnd('/') -replace '\.git$', ''
+            if ($destination -ine $Repository) {
+                throw "Origin does not match $Repository. Review the remote before publishing."
+            }
+        }
+        $repositoryIsPrivate = & gh repo view $Repository --json isPrivate --jq .isPrivate
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot verify publication repository visibility.' }
+        if ($repositoryIsPrivate.Trim() -ne 'false') { throw 'The publication repository must be public.' }
         Invoke-Checked git @('push', '-u', 'origin', $branch)
     }
 

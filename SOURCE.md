@@ -12,7 +12,7 @@ The app's source and versioned IPA downloads live in its own repository. Metadat
 
 The native launcher icon is a separate platform asset and must be checked in the actual generated native build.
 
-Do not use the inherited `publish.ps1` repository creation helper for this app: it creates a private repository. Set up and review a public `code-by-fh/rep-pilot` destination explicitly before publishing.
+`publish.ps1` defaults to the public `code-by-fh/rep-pilot` repository and creates it only when no origin exists. Review and commit the source before running publication.
 
 ## Release workflow
 

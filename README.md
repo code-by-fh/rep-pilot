@@ -13,7 +13,7 @@ Rep Pilot is an offline strength training journal built from the [SideStart Flut
 
 JSON is the restore format. CSV is intended for spreadsheets and cannot be imported. Save exported JSON outside the app; clipboard contents alone are not a durable backup. Uninstalling the app or clearing its local storage can remove your journal.
 
-The initial implementation is in development. See [validation evidence](docs/VALIDATION.md) for checks actually performed; an unsigned iOS build and signed iPhone test are separate milestones.
+The first implementation is present as source and awaits Flutter validation. See [validation evidence](docs/VALIDATION.md) for checks actually performed; an unsigned iOS build and signed iPhone test are separate milestones.
 
 ## Develop locally
 
@@ -36,7 +36,7 @@ flutter test
 
 ## Distribution
 
-The intended public repository is `code-by-fh/rep-pilot`. Do not use the inherited `publish.ps1` repository creation helper: it creates a private repository, while this app requires a reviewed public destination for source publication. No release or available download is claimed by this local implementation. Once that repository exists and its first release succeeds, its app source will be:
+The intended public repository is `code-by-fh/rep-pilot`. The publication helper checks that all origin push URLs match that destination before pushing. `publish.ps1` is configured to create the public `code-by-fh/rep-pilot` repository when no origin exists; review and commit the app before running it. No release or available download is claimed by this local implementation. Once that repository exists and its first release succeeds, its app source will be:
 
 ```text
 https://github.com/code-by-fh/rep-pilot/releases/latest/download/altstore-source.json

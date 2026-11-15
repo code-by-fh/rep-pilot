@@ -10,7 +10,7 @@ Earlier SideStart builds and tests are inherited template history, not evidence 
 
 `python -m unittest discover -s scripts -p test_*.py`: **41 tests passed**, including the Rep Pilot source metadata fixture. These are Python tooling tests, not a native build.
 
-Flutter commands are unavailable in this session. The SDK installer was also unavailable under the current execution policy. `flutter pub get`, `flutter analyze`, and `flutter test` have not run.
+Flutter commands are unavailable in this session. The first SDK installer attempt was blocked by the Windows script execution policy. A later process-scoped invocation reached the installer, but the network sandbox blocked the official SDK download. `flutter pub get`, `flutter analyze`, and `flutter test` have not run.
 
 ## Required checks
 
@@ -36,3 +36,11 @@ Python script tests use synthetic IPA bundles, fake native tools, and mocked Git
 - Record build identifiers and actual device results separately from local tests.
 
 No public repository was created, no release was published, and no shared catalog registration or refresh was performed as part of this implementation.
+
+## Application implementation review
+
+The application sources now include the immutable journal model, native file storage, browser storage, training editor, exercise history, and clipboard backup/restore. Dart tests cover model integrity, replacement failures, persistence ordering, input validation, restore confirmation, same-day prefills, and compact screens. These tests are written but have not executed because no usable Flutter SDK is available. Static review is not compilation evidence.
+
+The publication helper passed the PowerShell parser after its public repository defaults and origin checks were updated. No publication command was executed. No runtime packages were downloaded, and no dependency lock file was generated. Run `flutter pub get` with the pinned SDK and commit its lock file before release.
+
+The complete development copy was initially prepared in the permitted temporary workspace. After CI exposed the scaffold-only model.dart, the complete implementation was restored into the app repository at `sidestart/rep-pilot`. Flutter analysis and tests must run on this restored source before publication.
