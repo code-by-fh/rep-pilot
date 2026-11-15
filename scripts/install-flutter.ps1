@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 $flutterPin = (Get-Content -LiteralPath (Join-Path $projectDirectory '.fvmrc') -Raw | ConvertFrom-Json).flutter
-$releaseIndex = Invoke-RestMethod -Uri 'https://storage.googleapis.com/flutter_infra_release/flutter/releases/releases_windows.json'
+$releaseIndex = Invoke-RestMethod -Uri 'https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json'
 $matchingRelease = @($releaseIndex.releases | Where-Object { $_.version -eq $flutterPin -and $_.channel -eq 'stable' })
 if ($matchingRelease.Count -ne 1) {
     throw "Expected one stable Windows SDK for $flutterPin. Check the official Flutter SDK archive."
