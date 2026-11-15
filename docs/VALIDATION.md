@@ -56,3 +56,9 @@ Regression coverage now treats missed taps as failures, checks the Save hit targ
 The app now sets a German locale with Flutter SDK localization delegates, German date and decimal-weight displays, German starter exercise names, and German CSV headings. Existing stored exercise names and JSON technical identifiers are preserved. Runtime dependency resolution must include the SDK flutter_localizations package.
 
 The training exercise picker offers creation even with no active library exercises. A new exercise is persisted before being referenced by a draft. Creation failures preserve existing draft fields and stored bytes; successfully created exercises remain in the library after discarding a training draft. Widget and model regression tests were added for these behaviors. Local Dart parsing and Python checks do not substitute for a pinned Flutter runtime test and native build.
+
+## Compact exercise picker correction
+
+The reported CI run passed 25 Flutter tests and failed the large-text keyboard regression before reaching the form: the squat row existed but its center was outside the exercise list's hit-test area. With a 320-by-568 viewport and double text size, the fixed picker heading and creation button consumed too much of the sheet height. The heading now scrolls with the exercise list, leaving more space for selectable rows while creation stays accessible.
+
+The selection helper asserts that a full exercise row fits in the list viewport, centers the row before tapping, and retains strict hit-test checks. The existing compact-screen test still validates the Save target with keyboard insets and validation feedback. Local Python tooling tests and Dart formatting/parsing passed; pinned Flutter dependency resolution, analysis, and widget tests remain unavailable locally and require CI confirmation.

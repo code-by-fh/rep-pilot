@@ -42,6 +42,20 @@ Future<void> startSquat(WidgetTester tester) async {
     find.byKey(const ValueKey('exercise-picker')),
     const Offset(0, -120),
   );
+  // The picker must leave enough room for an entire row at large text sizes.
+  expect(
+    tester.getSize(find.byKey(const ValueKey('exercise-picker'))).height,
+    greaterThanOrEqualTo(
+      tester
+          .getSize(find.byKey(const ValueKey('choose-exercise-squat')))
+          .height,
+    ),
+  );
+  // Center the complete tap target rather than only revealing its top edge.
+  await Scrollable.ensureVisible(
+    tester.element(find.byKey(const ValueKey('choose-exercise-squat'))),
+    alignment: .5,
+  );
   await tester.pumpAndSettle();
   expect(
     find.byKey(const ValueKey('choose-exercise-squat')).hitTestable(),

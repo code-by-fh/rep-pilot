@@ -147,17 +147,17 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
         heightFactor: .7,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                'Übung auswählen',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
             Expanded(
               child: ListView(
                 key: const ValueKey('exercise-picker'),
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'Übung auswählen',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                  ),
                   if (available.isEmpty)
                     const Padding(
                       padding: EdgeInsets.all(20),
