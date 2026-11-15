@@ -26,25 +26,28 @@ Future<void> launch(WidgetTester tester, MemoryStorage storage) async {
 }
 
 Future<void> startSquat(WidgetTester tester) async {
-  await tester.tap(find.text('New training'));
+  await tester.tap(find.text('Neues Training'));
   await tester.pumpAndSettle();
   await tester.dragUntilVisible(
-    find.text('Add exercise'),
+    find.text('Übung hinzufügen'),
     find.byKey(const ValueKey('workout-fields')),
     const Offset(0, -120),
   );
   await tester.pumpAndSettle();
-  expect(find.text('Add exercise').hitTestable(), findsOneWidget);
-  await tester.tap(find.text('Add exercise'));
+  expect(find.text('Übung hinzufügen').hitTestable(), findsOneWidget);
+  await tester.tap(find.text('Übung hinzufügen'));
   await tester.pumpAndSettle();
   await tester.dragUntilVisible(
-    find.text('Squat'),
+    find.byKey(const ValueKey('choose-exercise-squat')),
     find.byKey(const ValueKey('exercise-picker')),
     const Offset(0, -120),
   );
   await tester.pumpAndSettle();
-  expect(find.text('Squat').hitTestable(), findsOneWidget);
-  await tester.tap(find.text('Squat'));
+  expect(
+    find.byKey(const ValueKey('choose-exercise-squat')).hitTestable(),
+    findsOneWidget,
+  );
+  await tester.tap(find.byKey(const ValueKey('choose-exercise-squat')));
   await tester.pumpAndSettle();
 }
 
@@ -73,6 +76,32 @@ Future<void> saveTraining(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openExerciseCreation(WidgetTester tester) async {
+  final add = find.text('Übung hinzufügen');
+  await tester.dragUntilVisible(
+    add,
+    find.byKey(const ValueKey('workout-fields')),
+    const Offset(0, -160),
+  );
+  await tester.pumpAndSettle();
+  expect(add.hitTestable(), findsOneWidget);
+  await tester.tap(add);
+  await tester.pumpAndSettle();
+  final create = find.byKey(const ValueKey('create-exercise'));
+  expect(create.hitTestable(), findsOneWidget);
+  await tester.tap(create);
+  await tester.pumpAndSettle();
+}
+
+Future<void> submitExerciseName(WidgetTester tester, String name) async {
+  await tester.enterText(
+    find.byKey(const ValueKey('exercise-name-input')),
+    name,
+  );
+  await tester.tap(find.byKey(const ValueKey('save-exercise-name')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   late bool previousHitTestWarnings;
   setUp(() {
@@ -83,6 +112,142 @@ void main() {
     WidgetController.hitTestWarningShouldBeFatal = previousHitTestWarnings;
   });
 
+  testWidgets(
+    'German defaults include localized Material date picker controls',
+    (tester) async {
+      await launch(tester, MemoryStorage());
+      final context = tester.element(find.byType(Scaffold).first);
+      expect(Localizations.localeOf(context).languageCode, 'de');
+      expect(MaterialLocalizations.of(context).cancelButtonLabel, 'Abbrechen');
+      await tester.tap(find.text('Übungen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kniebeuge'), findsOneWidget);
+      expect(find.text('Bankdrücken'), findsOneWidget);
+      expect(find.text('Kreuzheben'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Training'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Neues Training'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(displayDate(DateTime.now())));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      expect(picker, findsOneWidget);
+      final localized = MaterialLocalizations.of(tester.element(picker));
+      expect(Localizations.localeOf(tester.element(picker)).languageCode, 'de');
+      expect(find.text(localized.datePickerHelpText), findsOneWidget);
+      expect(find.text('Abbrechen'), findsOneWidget);
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(picker, findsNothing);
+      expect(
+        find.byKey(const ValueKey('save-training')).hitTestable(),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'an empty journal can create an exercise while composing its first training',
+    (tester) async {
+      final storage = MemoryStorage()
+        ..source = Journal(exercises: [], workouts: []).toBackupJson();
+      await launch(tester, storage);
+      await tester.tap(find.text('Neues Training'));
+      await tester.pumpAndSettle();
+      await openExerciseCreation(tester);
+      await submitExerciseName(tester, 'Rudern');
+      expect(storage.writes, 1);
+      final exerciseOnly = Journal.fromBackupJson(storage.source!);
+      expect(exerciseOnly.exercises.single.name, 'Rudern');
+      expect(exerciseOnly.workouts, isEmpty);
+      final id = exerciseOnly.exercises.single.id;
+      final weight = find.byKey(ValueKey('$id-weight-0'));
+      final reps = find.byKey(ValueKey('$id-reps-0'));
+      await tester.ensureVisible(weight);
+      await tester.enterText(weight, '52,5');
+      await tester.ensureVisible(reps);
+      await tester.enterText(reps, '10');
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await saveTraining(tester);
+      expect(storage.writes, 2);
+      final saved = Journal.fromBackupJson(storage.source!);
+      expect(saved.exercises, hasLength(1));
+      final entry = saved.workouts.single.entries.single;
+      expect(entry.exerciseId, id);
+      expect(entry.sets.single.weight, 52.5);
+      expect(entry.sets.single.reps, 10);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed exercise creation leaves no phantom and preserves training fields on retry',
+    (tester) async {
+      final storage = MemoryStorage()..source = Journal.empty().toBackupJson();
+      final original = storage.source;
+      await launch(tester, storage);
+      await startSquat(tester);
+      await fillFirstSet(tester, '72,5', '7');
+      storage.failWrites = true;
+      await openExerciseCreation(tester);
+      await submitExerciseName(tester, 'Rudern');
+      expect(storage.writes, 0);
+      expect(storage.source, original);
+      expect(find.text('Rudern'), findsNothing);
+      expect(
+        find.text(
+          'Die Übung konnte nicht angelegt werden. Deine Trainingseingaben bleiben erhalten. Bitte erneut versuchen.',
+        ),
+        findsOneWidget,
+      );
+      final squatWeight = find.byKey(const ValueKey('squat-weight-0'));
+      final squatReps = find.byKey(const ValueKey('squat-reps-0'));
+      await tester.ensureVisible(squatWeight);
+      expect(
+        tester.widget<TextFormField>(squatWeight).controller!.text,
+        '72,5',
+      );
+      expect(tester.widget<TextFormField>(squatReps).controller!.text, '7');
+      storage.failWrites = false;
+      await openExerciseCreation(tester);
+      await submitExerciseName(tester, 'Rudern');
+      expect(storage.writes, 1);
+      final durable = Journal.fromBackupJson(storage.source!);
+      expect(
+        durable.exercises.where((exercise) => exercise.name == 'Rudern'),
+        hasLength(1),
+      );
+      expect(durable.workouts, isEmpty);
+      final id = durable.exercises
+          .singleWhere((exercise) => exercise.name == 'Rudern')
+          .id;
+      final rowWeight = find.byKey(ValueKey('$id-weight-0'));
+      final rowReps = find.byKey(ValueKey('$id-reps-0'));
+      await tester.ensureVisible(rowWeight);
+      await tester.enterText(rowWeight, '50');
+      await tester.ensureVisible(rowReps);
+      await tester.enterText(rowReps, '10');
+      tester.testTextInput.hide();
+      await tester.pumpAndSettle();
+      await saveTraining(tester);
+      expect(storage.writes, 2);
+      final saved = Journal.fromBackupJson(storage.source!);
+      final entries = saved.workouts.single.entries;
+      expect(entries, hasLength(2));
+      expect(entries.first.exerciseId, 'squat');
+      expect(entries.first.sets.single.weight, 72.5);
+      expect(entries.first.sets.single.reps, 7);
+      expect(entries.last.exerciseId, id);
+      expect(entries.last.sets.single.weight, 50);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'records decimal comma weights and prefills the latest saved set',
     (tester) async {
@@ -100,7 +265,7 @@ void main() {
       await tester.ensureVisible(weightField);
       expect(
         tester.widget<TextFormField>(weightField).controller!.text,
-        '62.5',
+        '62,5',
       );
       expect(
         tester
@@ -159,7 +324,7 @@ void main() {
       await saveTraining(tester);
       expect(storage.source, isNull);
       expect(
-        find.textContaining('Your entries are still here'),
+        find.textContaining('Deine Eingaben bleiben erhalten'),
         findsOneWidget,
       );
       storage.failWrites = false;
@@ -186,13 +351,13 @@ void main() {
     await fillFirstSet(tester, '0', '0');
     await saveTraining(tester);
     expect(storage.writes, 0);
-    expect(find.text('Edit training'), findsNothing);
+    expect(find.text('Training bearbeiten'), findsNothing);
     expect(
       find.byKey(const ValueKey('save-training')).hitTestable(),
       findsOneWidget,
     );
     expect(
-      find.textContaining('Check weight and repetitions in every set'),
+      find.textContaining('Prüfe Gewicht und Wiederholungen in allen Sätzen'),
       findsOneWidget,
     );
     await fillFirstSet(tester, '0', '5');
@@ -247,7 +412,7 @@ void main() {
     await saveTraining(tester);
     expect(storage.writes, 0);
     expect(
-      find.textContaining('Check weight and repetitions in every set'),
+      find.textContaining('Prüfe Gewicht und Wiederholungen in allen Sätzen'),
       findsOneWidget,
     );
     expect(
@@ -293,11 +458,14 @@ void main() {
     (tester) async {
       final storage = MemoryStorage()..source = 'not valid JSON';
       await launch(tester, storage);
-      expect(find.textContaining('could not be loaded'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(
+        find.textContaining('konnte nicht geladen werden'),
+        findsOneWidget,
+      );
+      expect(find.text('Erneut versuchen'), findsOneWidget);
       expect(storage.source, 'not valid JSON');
       expect(storage.writes, 0);
-      expect(find.text('New training'), findsNothing);
+      expect(find.text('Neues Training'), findsNothing);
     },
   );
 
@@ -306,23 +474,23 @@ void main() {
     (tester) async {
       final storage = MemoryStorage();
       await launch(tester, storage);
-      await tester.tap(find.text('Data'));
+      await tester.tap(find.text('Daten'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Restore backup'));
+      await tester.tap(find.text('Sicherung wiederherstellen'));
       await tester.pumpAndSettle();
       final backup = Journal(
         exercises: [Exercise(id: 'pull-up', name: 'Pull-up')],
         workouts: [],
       );
       await tester.enterText(find.byType(TextField), backup.toBackupJson());
-      await tester.tap(find.text('Preview backup'));
+      await tester.tap(find.text('Sicherung prüfen'));
       await tester.pumpAndSettle();
       expect(storage.writes, 0);
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Weiter'));
       await tester.pumpAndSettle();
-      expect(find.text('Replace all data?'), findsOneWidget);
+      expect(find.text('Alle Daten ersetzen?'), findsOneWidget);
       expect(storage.writes, 0);
-      await tester.tap(find.text('Replace data'));
+      await tester.tap(find.text('Daten ersetzen'));
       await tester.pumpAndSettle();
       expect(
         Journal.fromBackupJson(storage.source!).exercises.single.name,
@@ -342,10 +510,10 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await launch(tester, MemoryStorage());
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Exercises'));
+    await tester.tap(find.text('Übungen'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Data'));
+    await tester.tap(find.text('Daten'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

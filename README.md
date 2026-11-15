@@ -4,7 +4,7 @@ Rep Pilot is an offline strength training journal built from the [SideStart Flut
 
 ## Training journal
 
-- Create, rename, and archive exercises while keeping their history.
+- Create, rename, and archive exercises while keeping their history. New exercises can also be created directly while composing a training session.
 - Record dated workouts with multiple exercises and sets.
 - Edit weight and repetition counts and remove entries when needed.
 - Review workouts and exercise history, including recent and highest weights.
@@ -50,4 +50,10 @@ The inherited IPA filename remains `sidestart-ios-unsigned.ipa` for compatibilit
 
 See [source publication](SOURCE.md) and [iPhone installation](docs/SIDELOADING.md). Rep Pilot must be registered separately before it can appear in the shared `code-by-fh/ios-apps` catalog. That catalog only refreshes through its manual workflow; app releases do not update it automatically.
 
-All project text and UI labels use English. See [AGENTS.md](AGENTS.md).
+The app defaults to German, including Material dialogs, dates, decimal weight displays, and starter exercise names. Existing user exercise names are preserved. Documentation, comments, and release metadata remain English. See [AGENTS.md](AGENTS.md).
+
+## Create an exercise during training
+
+Choose **Neues Training**, then **Übung hinzufügen**, then **Neue Übung anlegen**. Enter a name and select **Speichern**. The exercise is saved to the library and added to the current draft with its first set. Enter weight and repetitions, then choose **Training speichern**.
+
+Exercise creation is saved separately from the training draft. If you discard the draft, an already created exercise stays in the library. Failed exercise writes keep existing training fields intact and can be retried.

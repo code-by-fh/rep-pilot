@@ -1,6 +1,7 @@
 # Flutter sideload app template
 
 - Write all project text in English, including documentation, comments, UI labels, console messages, errors, metadata descriptions, commit messages, and future additions. Preserve technical identifiers, URLs, and names when translation would change their meaning. User instructions take precedence.
+- User-requested exception: app UI, built-in exercise names, and CSV column labels default to German. Keep documentation, comments, console messages, and release metadata in English. Preserve names already entered or imported by users.
 - Use the Flutter SDK in `.fvmrc`; the starter has no third-party runtime packages.
 - Configure a new template copy with `python scripts/configure_app.py --name ... --organization ... --display-name ...` before creating native platform directories. `app-config.json` is the central identity configuration.
 - `python scripts/bootstrap.py` generates missing native projects and preserves existing ones.

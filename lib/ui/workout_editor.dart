@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../main.dart'
-    show confirm, displayDate, newId, weightText, newestWorkouts;
+    show
+        askExerciseName,
+        confirm,
+        displayDate,
+        newId,
+        weightText,
+        newestWorkouts;
 import '../model.dart';
 
 class WorkoutEditor extends StatefulWidget {
@@ -9,12 +15,14 @@ class WorkoutEditor extends StatefulWidget {
     super.key,
     required this.journal,
     required this.onSave,
+    required this.onCreateExercise,
     this.workout,
     this.onDelete,
   });
   final Journal journal;
   final Workout? workout;
   final Future<void> Function(Workout) onSave;
+  final Future<Exercise> Function(String name) onCreateExercise;
   final Future<void> Function()? onDelete;
   @override
   State<WorkoutEditor> createState() => _WorkoutEditorState();
@@ -46,6 +54,9 @@ class _EntryDraft {
 class _WorkoutEditorState extends State<WorkoutEditor> {
   final _form = GlobalKey<FormState>();
   final _entries = <_EntryDraft>[];
+  late final List<Exercise> _exercises;
+  bool _creating = false;
+  bool get _busy => _saving || _creating;
   late DateTime _date;
   bool _dirty = false;
   bool _saving = false;
@@ -55,6 +66,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   void initState() {
     super.initState();
     _date = widget.workout?.date ?? DateTime.now();
+    _exercises = [...widget.journal.exercises];
     for (final entry in widget.workout?.entries ?? <WorkoutEntry>[]) {
       _entries.add(
         _EntryDraft(entry.exerciseId, [
@@ -82,13 +94,13 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   }
 
   Future<void> _leave() async {
-    if (_saving) return;
+    if (_busy) return;
     if (_dirty &&
         !await confirm(
           context,
-          'Discard changes?',
-          'Your unsaved training changes will be lost.',
-          'Discard',
+          'Änderungen verwerfen?',
+          'Deine ungespeicherten Änderungen am Training gehen verloren. Bereits angelegte Übungen bleiben in der Bibliothek.',
+          'Verwerfen',
         ))
       return;
     if (!mounted) return;
@@ -99,6 +111,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   }
 
   Future<void> _datePicker() async {
+    if (_busy) return;
     final date = await showDatePicker(
       context: context,
       initialDate: _date,
@@ -113,8 +126,10 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   }
 
   Future<void> _addExercise() async {
+    if (_busy) return;
+    FocusScope.of(context).unfocus();
     final available =
-        widget.journal.exercises
+        _exercises
             .where(
               (exercise) =>
                   !exercise.archived &&
@@ -124,17 +139,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
           ..sort(
             (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
           );
-    if (available.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No more active exercises. Add or unarchive an exercise in your library.',
-          ),
-        ),
-      );
-      return;
-    }
-    final exercise = await showModalBottomSheet<Exercise>(
+    final selected = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -145,7 +150,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
             Padding(
               padding: const EdgeInsets.all(20),
               child: Text(
-                'Choose exercise',
+                'Übung auswählen',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
             ),
@@ -153,8 +158,16 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
               child: ListView(
                 key: const ValueKey('exercise-picker'),
                 children: [
+                  if (available.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'Keine weiteren aktiven Übungen. Lege eine neue Übung an.',
+                      ),
+                    ),
                   for (final item in available)
                     ListTile(
+                      key: ValueKey('choose-exercise-${item.id}'),
                       title: Text(item.name),
                       trailing: const Icon(Icons.add),
                       onTap: () => Navigator.pop(context, item),
@@ -162,11 +175,51 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton.icon(
+                key: const ValueKey('create-exercise'),
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.add),
+                label: const Text('Neue Übung anlegen'),
+              ),
+            ),
           ],
         ),
       ),
     );
-    if (exercise == null || !mounted) return;
+    if (!mounted || selected == null) return;
+    if (selected == true) {
+      await _createExercise();
+    } else if (selected is Exercise) {
+      _appendExercise(selected);
+    }
+  }
+
+  Future<void> _createExercise() async {
+    if (_busy) return;
+    try {
+      final name = await askExerciseName(context);
+      if (!mounted || name == null || name.trim().isEmpty || _busy) return;
+      setState(() {
+        _creating = true;
+        _error = null;
+      });
+      final exercise = await widget.onCreateExercise(name.trim());
+      if (!mounted) return;
+      _exercises.add(exercise);
+      _appendExercise(exercise);
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => _error = 'Die Übung konnte nicht angelegt werden. Deine Trainingseingaben bleiben erhalten. Bitte erneut versuchen.',
+        );
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  void _appendExercise(Exercise exercise) {
     final previous = newestWorkouts(widget.journal);
     TrainingSet? last;
     for (final workout in previous) {
@@ -205,9 +258,9 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   Future<void> _removeEntry(_EntryDraft entry) async {
     if (!await confirm(
       context,
-      'Remove exercise?',
-      'All sets for this exercise will be removed from this training session.',
-      'Remove',
+      'Übung entfernen?',
+      'Alle Sätze dieser Übung werden aus diesem Training entfernt.',
+      'Entfernen',
     ))
       return;
     if (!mounted) return;
@@ -230,19 +283,24 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   String? _weightError(String? text) {
     final value = double.tryParse((text ?? '').trim().replaceAll(',', '.'));
     return value == null || !value.isFinite || value < 0 || value > 10000
-        ? 'Enter 0–10000 kg'
+        ? '0–10000 kg eingeben'
         : null;
   }
 
   String? _repsError(String? text) {
     final value = int.tryParse((text ?? '').trim());
-    return value == null || value < 1 || value > 10000 ? 'Enter 1–10000' : null;
+    return value == null || value < 1 || value > 10000
+        ? '1–10000 eingeben'
+        : null;
   }
 
   Future<void> _save() async {
+    if (_busy) return;
     FocusScope.of(context).unfocus();
     if (_entries.isEmpty) {
-      setState(() => _error = 'Add at least one exercise before saving.');
+      setState(
+        () => _error = 'Füge vor dem Speichern mindestens eine Übung hinzu.',
+      );
       return;
     }
     final visibleFieldsValid = _form.currentState!.validate();
@@ -255,7 +313,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
     );
     if (!visibleFieldsValid || !allSetsValid) {
       setState(
-        () => _error = 'Check weight and repetitions in every set, including sets further up or down the page.',
+        () => _error = 'Prüfe Gewicht und Wiederholungen in allen Sätzen, auch weiter oben oder unten.',
       );
       return;
     }
@@ -297,17 +355,18 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
       if (mounted)
         setState(() {
           _saving = false;
-          _error = 'Training could not be saved. Your entries are still here. Please try again.';
+          _error = 'Das Training konnte nicht gespeichert werden. Deine Eingaben bleiben erhalten. Bitte erneut versuchen.';
         });
     }
   }
 
   Future<void> _delete() async {
+    if (_busy) return;
     if (!await confirm(
       context,
-      'Delete training?',
-      'This training session and all its sets will be permanently removed.',
-      'Delete',
+      'Training löschen?',
+      'Dieses Training und alle zugehörigen Sätze werden dauerhaft gelöscht.',
+      'Löschen',
     ))
       return;
     if (!mounted) return;
@@ -330,7 +389,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
       if (mounted)
         setState(() {
           _saving = false;
-          _error = 'Training could not be deleted. Please try again.';
+          _error = 'Das Training konnte nicht gelöscht werden. Bitte erneut versuchen.';
         });
     }
   }
@@ -339,20 +398,20 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
     final weight = TextFormField(
       key: ValueKey('${entry.exerciseId}-weight-$index'),
       controller: set.weight,
-      enabled: !_saving,
+      enabled: !_busy,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textInputAction: TextInputAction.next,
-      decoration: const InputDecoration(labelText: 'Weight (kg)'),
+      decoration: const InputDecoration(labelText: 'Gewicht (kg)'),
       validator: _weightError,
       onChanged: (_) => _changed(),
     );
     final reps = TextFormField(
       key: ValueKey('${entry.exerciseId}-reps-$index'),
       controller: set.reps,
-      enabled: !_saving,
+      enabled: !_busy,
       keyboardType: TextInputType.number,
       textInputAction: TextInputAction.next,
-      decoration: const InputDecoration(labelText: 'Reps'),
+      decoration: const InputDecoration(labelText: 'Wiederholungen'),
       validator: _repsError,
       onChanged: (_) => _changed(),
     );
@@ -366,13 +425,13 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
             children: [
               Expanded(
                 child: Text(
-                  'SET ${index + 1}',
+                  'SATZ ${index + 1}',
                   style: Theme.of(context).textTheme.labelMedium,
                 ),
               ),
               IconButton(
-                tooltip: 'Remove set ${index + 1}',
-                onPressed: _saving || entry.sets.length == 1
+                tooltip: 'Satz ${index + 1} entfernen',
+                onPressed: _busy || entry.sets.length == 1
                     ? null
                     : () => _removeSet(entry, set),
                 icon: const Icon(Icons.remove_circle_outline),
@@ -399,7 +458,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
   }
 
   Widget _entryCard(_EntryDraft entry) {
-    final exercise = widget.journal.exercises.firstWhere(
+    final exercise = _exercises.firstWhere(
       (exercise) => exercise.id == entry.exerciseId,
     );
     return Card(
@@ -419,20 +478,20 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Remove ${exercise.name}',
-                  onPressed: _saving ? null : () => _removeEntry(entry),
+                  tooltip: '${exercise.name} entfernen',
+                  onPressed: _busy ? null : () => _removeEntry(entry),
                   icon: const Icon(Icons.close),
                 ),
               ],
             ),
-            if (exercise.archived) const Text('Archived exercise'),
+            if (exercise.archived) const Text('Archivierte Übung'),
             for (var index = 0; index < entry.sets.length; index++)
               _setRow(entry, entry.sets[index], index),
             const SizedBox(height: 12),
             TextButton.icon(
-              onPressed: _saving ? null : () => _addSet(entry),
+              onPressed: _busy ? null : () => _addSet(entry),
               icon: const Icon(Icons.add),
-              label: const Text('Add set'),
+              label: const Text('Satz hinzufügen'),
             ),
           ],
         ),
@@ -442,23 +501,25 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: _allowPop || (!_dirty && !_saving),
+    canPop: _allowPop || (!_dirty && !_busy),
     onPopInvokedWithResult: (didPop, result) {
-      if (!didPop && !_saving) _leave();
+      if (!didPop && !_busy) _leave();
     },
     child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          tooltip: 'Back',
-          onPressed: _saving ? null : _leave,
+          tooltip: 'Zurück',
+          onPressed: _busy ? null : _leave,
           icon: const Icon(Icons.arrow_back),
         ),
-        title: Text(widget.workout == null ? 'New training' : 'Edit training'),
+        title: Text(
+          widget.workout == null ? 'Neues Training' : 'Training bearbeiten',
+        ),
         actions: [
           if (widget.onDelete != null)
             IconButton(
-              tooltip: 'Delete training',
-              onPressed: _saving ? null : _delete,
+              tooltip: 'Training löschen',
+              onPressed: _busy ? null : _delete,
               icon: const Icon(Icons.delete_outline),
             ),
         ],
@@ -478,25 +539,27 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
                         padding: const EdgeInsets.all(20),
                         children: [
                           OutlinedButton.icon(
-                            onPressed: _saving ? null : _datePicker,
+                            onPressed: _busy ? null : _datePicker,
                             icon: const Icon(Icons.calendar_today_outlined),
                             label: Text(displayDate(_date)),
                           ),
                           const SizedBox(height: 12),
-                          const Text('Log the work. Keep the progress.'),
+                          const Text(
+                            'Halte dein Training fest. Sieh deinen Fortschritt.',
+                          ),
                           const SizedBox(height: 24),
                           if (_entries.isEmpty)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 24),
                               child: Text(
-                                'Choose an exercise, then enter a weight and repetition count for each set. Use 0 kg for bodyweight movements.',
+                                'Wähle eine Übung aus oder lege eine neue an. Gib für jeden Satz Gewicht und Wiederholungen ein. Nutze 0 kg für Übungen mit dem eigenen Körpergewicht.',
                               ),
                             ),
                           for (final entry in _entries) _entryCard(entry),
                           OutlinedButton.icon(
-                            onPressed: _saving ? null : _addExercise,
+                            onPressed: _busy ? null : _addExercise,
                             icon: const Icon(Icons.add),
-                            label: const Text('Add exercise'),
+                            label: const Text('Übung hinzufügen'),
                           ),
                           const SizedBox(height: 24),
                         ],
@@ -535,8 +598,8 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
                           ),
                         FilledButton.icon(
                           key: const ValueKey('save-training'),
-                          onPressed: _saving ? null : _save,
-                          icon: _saving
+                          onPressed: _busy ? null : _save,
+                          icon: _busy
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
@@ -545,7 +608,13 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
                                   ),
                                 )
                               : const Icon(Icons.check),
-                          label: Text(_saving ? 'Saving...' : 'Save training'),
+                          label: Text(
+                            _creating
+                                ? 'Übung wird angelegt...'
+                                : _saving
+                                ? 'Wird gespeichert...'
+                                : 'Training speichern',
+                          ),
                         ),
                       ],
                     ),
