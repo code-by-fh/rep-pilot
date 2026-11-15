@@ -28,10 +28,22 @@ Future<void> launch(WidgetTester tester, MemoryStorage storage) async {
 Future<void> startSquat(WidgetTester tester) async {
   await tester.tap(find.text('New training'));
   await tester.pumpAndSettle();
-  await tester.ensureVisible(find.text('Add exercise'));
+  await tester.dragUntilVisible(
+    find.text('Add exercise'),
+    find.byKey(const ValueKey('workout-fields')),
+    const Offset(0, -120),
+  );
   await tester.pumpAndSettle();
+  expect(find.text('Add exercise').hitTestable(), findsOneWidget);
   await tester.tap(find.text('Add exercise'));
   await tester.pumpAndSettle();
+  await tester.dragUntilVisible(
+    find.text('Squat'),
+    find.byKey(const ValueKey('exercise-picker')),
+    const Offset(0, -120),
+  );
+  await tester.pumpAndSettle();
+  expect(find.text('Squat').hitTestable(), findsOneWidget);
   await tester.tap(find.text('Squat'));
   await tester.pumpAndSettle();
 }

@@ -151,6 +151,7 @@ class _WorkoutEditorState extends State<WorkoutEditor> {
             ),
             Expanded(
               child: ListView(
+                key: const ValueKey('exercise-picker'),
                 children: [
                   for (final item in available)
                     ListTile(
