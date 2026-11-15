@@ -1,0 +1,164 @@
+name: Build apps
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Finish a running publication before starting another build on this branch.
+# Release tags created below do not trigger another workflow.
+concurrency:
+  group: builds-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      configured: ${{ steps.template.outputs.configured }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check template application identity
+        id: template
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          config = json.loads(pathlib.Path('app-config.json').read_text(encoding='utf-8-sig'))
+          ready = (os.environ['SOURCE_REPOSITORY'] == 'code-by-fh/sidestart'
+                   or config['projectName'] != 'sidestart'
+                   or config['organization'] != 'dev.sidestart')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+              stream.write('configured=' + str(ready).lower() + '\n')
+          if not ready:
+              print('Template copy detected. Configure a unique --name or --organization with scripts/configure_app.py, then commit and push. Native builds and publication are skipped until then.')
+          PY
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          channel: stable
+          cache: true
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - run: flutter pub get
+      - run: dart format lib test
+      - run: flutter analyze
+      - run: flutter test
+
+  ios:
+    needs: checks
+    if: needs.checks.outputs.configured == 'true'
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          channel: stable
+          cache: true
+      - run: python3 scripts/bootstrap.py --platforms ios
+      - run: flutter pub get
+      - name: Build unsigned device release
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: flutter build ios --release --no-codesign --build-number "$BUILD_NUMBER"
+      - run: python3 scripts/package_ipa.py
+      - name: Generate SideStore source metadata
+        env:
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/make_source.py --ipa dist/sidestart-ios-unsigned.ipa --repository "$SOURCE_REPOSITORY" --output-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidestart-ios-unsigned
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  android:
+    needs: checks
+    if: needs.checks.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .fvmrc
+          channel: stable
+          cache: true
+      - run: python3 scripts/bootstrap.py --platforms android
+      - run: flutter pub get
+      - name: Build installable release APK
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: flutter build apk --release --build-number "$BUILD_NUMBER"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidestart-android
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: github.event_name != 'pull_request' && !github.event.repository.private && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    needs: ios
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: source-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidestart-ios-unsigned
+          path: release-assets
+      - name: Publish public IPA and SideStore source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          BUILD_COMMIT: ${{ github.sha }}
+        run: python3 scripts/publish_source.py --repository "$SOURCE_REPOSITORY" --ipa release-assets/sidestart-ios-unsigned.ipa --target "$BUILD_COMMIT"
+
+  attach-android:
+    if: github.event_name != 'pull_request' && !github.event.repository.private && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    needs: [android, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidestart-ios-unsigned
+          path: iosmetadata
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidestart-android
+          path: android
+      - name: Read the release tag
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          tag = json.loads(pathlib.Path('iosmetadata/release-metadata.json').read_text())['tag']
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('RELEASE_TAG=' + tag + '\n')
+          PY
+      - name: Attach Android APK to the existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$RELEASE_TAG" android/app-release.apk --clobber
