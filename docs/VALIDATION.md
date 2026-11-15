@@ -44,3 +44,9 @@ The application sources now include the immutable journal model, native file sto
 The publication helper passed the PowerShell parser after its public repository defaults and origin checks were updated. No publication command was executed. No runtime packages were downloaded, and no dependency lock file was generated. Run `flutter pub get` with the pinned SDK and commit its lock file before release.
 
 The complete development copy was initially prepared in the permitted temporary workspace. After CI exposed the scaffold-only model.dart, the complete implementation was restored into the app repository at `sidestart/rep-pilot`. Flutter analysis and tests must run on this restored source before publication.
+
+## CI widget failure correction
+
+The reported CI run passed Flutter analysis and 18 of 21 Flutter tests. Three widget tests failed because Save training was a lazy child at the bottom of the form list: its hit target moved below the viewport after errors, and long forms did not build it until scrolled. The editor now keeps Save training and bounded, scrollable error feedback outside the form list.
+
+Regression coverage now treats missed taps as failures, checks the Save hit target, scrolls an invalid set out of view before validating, verifies correction and retry, and checks a compact viewport with large text and keyboard insets. The installed Dart formatter parsed the changed files using Dart language version 3.13. This syntax check does not execute the tests or verify Flutter 3.47.9 behavior. The pinned Flutter SDK remains unavailable locally; the next CI run must confirm the full Flutter suite and native builds.
