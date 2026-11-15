@@ -40,7 +40,7 @@ Future<void> fillFirstSet(WidgetTester tester, String weight, String reps) async
   await tester.enterText(weightField, weight);
   await tester.ensureVisible(repsField);
   await tester.enterText(repsField, reps);
-  await tester.testTextInput.hide();
+  tester.testTextInput.hide();
   await tester.pumpAndSettle();
 }
 
